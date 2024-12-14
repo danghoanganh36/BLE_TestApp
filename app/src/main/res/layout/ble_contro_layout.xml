@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/LayoutControl"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <!-- Device Name -->
+    <TextView
+        android:id="@+id/deviceName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Device Name:"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <TextView
+        android:id="@+id/deviceNameValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Unknown"
+        android:textSize="16sp"
+        app:layout_constraintTop_toBottomOf="@id/deviceName"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- Device Address -->
+    <TextView
+        android:id="@+id/deviceAddress"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Device Address:"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/deviceNameValue"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginTop="16dp" />
+
+    <TextView
+        android:id="@+id/deviceAddressValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Unknown"
+        android:textSize="16sp"
+        app:layout_constraintTop_toBottomOf="@id/deviceAddress"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- Services -->
+    <TextView
+        android:id="@+id/deviceServices"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Services:"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toBottomOf="@id/deviceAddressValue"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginTop="16dp" />
+
+    <TextView
+        android:id="@+id/deviceServicesValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="None"
+        android:textSize="16sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/deviceServices" />
+
+    <!-- Characteristics -->
+
+    <!-- Send Signal Button -->
+
+    <!-- Read Signal Button -->
+
+    <!-- Received Data TextView -->
+
+    <!-- Disconnect Button -->
+
+    <Button
+        android:id="@+id/sendSignalButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="5dp"
+        android:text="Send Signal"
+        app:layout_constraintEnd_toStartOf="@+id/readSignalButton"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/deviceServicesValue" />
+
+    <Button
+        android:id="@+id/StopSignalButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="5dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="13dp"
+        android:text="Stop Signal"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@+id/readSignalButton"
+        app:layout_constraintTop_toBottomOf="@+id/deviceServicesValue"
+        tools:ignore="MissingConstraints" />
+
+    <Button
+        android:id="@+id/disconnectButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:layout_marginTop="8dp"
+        android:text="Disconnect"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/sendSignalButton" />
+
+    <Button
+        android:id="@+id/readSignalButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="5dp"
+        android:layout_marginEnd="6dp"
+        android:text="Read Signal"
+        app:layout_constraintEnd_toStartOf="@+id/StopSignalButton"
+        app:layout_constraintStart_toEndOf="@id/sendSignalButton"
+        app:layout_constraintTop_toBottomOf="@+id/deviceServicesValue"
+        tools:ignore="MissingConstraints" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

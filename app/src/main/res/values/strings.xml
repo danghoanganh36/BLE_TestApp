@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">BrainLife_Nanochap_BLE_TEST</string>
+    <string name="BrainLifeEEGText">EEG_Brainlife_Bluetooth1</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="scan">Scan</string>
+    <string name="SwitchToLayout">SwitchToLayout</string>
+</resources>

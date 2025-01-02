@@ -116,7 +116,7 @@ public class BleManager {
         @SuppressLint("MissingPermission")
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
-//            gatt.requestMtu(10);
+//            gatt.requestMtu();
             String state = newState == BluetoothGatt.STATE_CONNECTED ? "Connected" : "Disconnected";
             logDebug("Connection state changed: " + state);
 
@@ -204,7 +204,8 @@ public class BleManager {
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
             byte[] receivedData = characteristic.getValue();
-            Log.d("Hex data", Arrays.toString(receivedData));
+            Log.d("Charateristic length", String.valueOf(characteristic.getValue().length));
+            Log.d("Charateristic", Arrays.toString(characteristic.getValue()));
             // If there's leftover data from the previous signal, append it
             if (!leftoverData.isEmpty()) {
                 dataBuffer.addAll(leftoverData);

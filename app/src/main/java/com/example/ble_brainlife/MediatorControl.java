@@ -1,5 +1,6 @@
 package com.example.ble_brainlife;
 
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -70,6 +71,7 @@ public class MediatorControl implements Mediator {
             String hexSignal = "2201230D"; // Hexadecimal data to send
             byte[] signal = hexStringToByteArray(hexSignal); // Convert hex to byte array
             ble.writeToCharacteristic(signal); // Send the byte array to BLE characteristic
+            Log.d("SEND DATA", "SEND");
         });
         stopSignalButton.setOnClickListener(v -> {
             String hexSignal = "2200220D"; // Hexadecimal data to send

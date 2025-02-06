@@ -18,6 +18,9 @@ import android.provider.MediaStore;
 import android.util.Log;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
@@ -33,6 +36,13 @@ import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
 
 
 public class BleManager {
@@ -44,7 +54,11 @@ public class BleManager {
     private static final UUID WRITE_CHARACTERISTIC_UUID = UUID.fromString("a6ed0203-d344-460a-8075-b9e8ec90d71b");
     private static final UUID CLIENT_CHARACTERISTIC_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     private static final UUID LED_CHARACTERISTIC_UUID = UUID.fromString("a6ed0205-d344-460a-8075-b9e8ec90d71b");
+    public static final String WEBSOCKET_SERVER_URL = "ws://ws-gateway.dev.brainlife.tech";
+    public static final Integer MAX_DATA_SIZE = 1000;
+    public static final Integer SAMPLING_RATE = 250;
 
+    private WebSocket webSocket;
     private final Context context;
     public BluetoothGatt bluetoothGatt;
     public Mediator mediator;
@@ -55,6 +69,7 @@ public class BleManager {
     private File csvFile;
     public static List<Byte> dataBuffer = new ArrayList<>();
     public static List<Byte> leftoverData = new ArrayList<>();
+    private final List<SignalData> collectedSignalData = new ArrayList<>();
 
 
     public boolean Marked = false;
@@ -110,6 +125,79 @@ public class BleManager {
         deviceAddress = device.getAddress();
         logDebug("Connecting to device: " + deviceAddress);
         bluetoothGatt = device.connectGatt(context, false, gattCallback);
+        OkHttpClient client = MessageQueueConnectionManager.getInstance().getClient();
+        String webSocketUrl = WEBSOCKET_SERVER_URL;
+
+        Request request = new Request.Builder().url(webSocketUrl).build();
+
+        webSocket = client.newWebSocket(request, new WebSocketListener() {
+            @Override
+            public void onOpen(@NonNull WebSocket webSocket, @NonNull Response response) {
+            }
+
+            @Override
+            public void onMessage(@NonNull WebSocket webSocket, @NonNull String text) {
+                Log.d(TAG, "Message received from server: " + text);
+            }
+
+            @Override
+            public void onFailure(@NonNull WebSocket webSocket, @NonNull Throwable t, @Nullable Response response) {
+            }
+
+            @Override
+            public void onClosing(@NonNull WebSocket webSocket, int code, @NonNull String reason) {
+                webSocket.close(code, reason);
+            }
+
+            @Override
+            public void onClosed(@NonNull WebSocket webSocket, int code, @NonNull String reason) {
+            }
+        });
+    }
+
+    private void postToCloud(List<SignalData> dataToSend) {
+        if (webSocket == null) {
+            Log.e(TAG, "WebSocket is not connected.");
+            return;
+        }
+
+        try {
+            // Construct JSON payload
+            String userId = UUID.randomUUID().toString();
+
+            StringBuilder signalDataJson = new StringBuilder("[");
+            for (SignalData signalData : dataToSend) {
+                signalDataJson.append(signalData.toJson()).append(",");
+            }
+            if (signalDataJson.length() > 1) {
+                signalDataJson.setLength(signalDataJson.length() - 1);
+            }
+            signalDataJson.append("]");
+
+            // Create payload JSON
+            String payload = "{"
+                    + "\"records\": ["
+                    + "    {"
+                    + "        \"key\": \"ID-BL001\","
+                    + "        \"value\": {"
+                    + "            \"user_id\": \"" + userId + "\","
+                    + "            \"calculatedSignalValues\": " + signalDataJson
+                    + "        }"
+                    + "    }"
+                    + "]"
+                    + "}";
+
+//            // Compress and encode payload
+//            byte[] compressedPayload = compressWithGzip(payload);
+//            String base64Payload = Base64.getEncoder().encodeToString(compressedPayload);
+
+            // Send message via WebSocket
+//            webSocket.send(base64Payload);
+            webSocket.send(payload);
+            Log.d(TAG, "Message sent to Redpanda via WebSocket.");
+        } catch (Exception e) {
+            Log.e(TAG, "Error sending data to WebSocket: " + e.getMessage());
+        }
     }
 
     private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
@@ -123,6 +211,13 @@ public class BleManager {
             if (newState == BluetoothGatt.STATE_CONNECTED) {
                 mediator.notify(this, "EnableSwitchButton");
                 gatt.discoverServices();
+            }
+
+            if (newState == BluetoothGatt.STATE_DISCONNECTING) {
+                if (webSocket != null) {
+                    webSocket.close(1000, "Stopping posting to cloud.");
+                    webSocket = null;
+                }
             }
         }
 
@@ -204,8 +299,7 @@ public class BleManager {
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
             byte[] receivedData = characteristic.getValue();
-            Log.d("Charateristic length", String.valueOf(characteristic.getValue().length));
-            Log.d("Charateristic", Arrays.toString(characteristic.getValue()));
+            long receivedTimestamp = System.currentTimeMillis();
             // If there's leftover data from the previous signal, append it
             if (!leftoverData.isEmpty()) {
                 dataBuffer.addAll(leftoverData);
@@ -218,7 +312,7 @@ public class BleManager {
             }
 
             // Process data to detect complete signals
-            logReceivedSignal(processBuffer());
+            logReceivedSignal(processBuffer(), receivedTimestamp);
         }
     };
 
@@ -272,7 +366,7 @@ public class BleManager {
     long milliseconds ;
     List<String> csvRows = new ArrayList<>(); // List to store CSV rows
     boolean isStoped = false;
-    private void logReceivedSignal(final String signalData) {
+    private void logReceivedSignal(final String signalData, final long signalTimestamp) {
 
         String no0XData = signalData.replace("0x", "");
         String cleanSignalData = signalData.replace("0x", "").replace(" ", "");
@@ -307,7 +401,17 @@ public class BleManager {
         if (signalInteger >= 8388608) {
             signalInteger -= 16777216;
         }
-        double calculatedValue = (signalInteger * 1.2)/8388608;;
+        double calculatedValue = (signalInteger * 1.2)/8388608;
+
+        collectedSignalData.add(new SignalData(calculatedValue, signalTimestamp));
+
+        if (collectedSignalData.size() > MAX_DATA_SIZE) {
+            collectedSignalData.subList(0, SAMPLING_RATE).clear();
+        }
+
+        if (collectedSignalData.size() == MAX_DATA_SIZE) {
+            postToCloud(new ArrayList<>(collectedSignalData));
+        }
 
         milliseconds = System.currentTimeMillis();
         String csvRow = milliseconds + "," + signalInteger + "," + calculatedValue + "," + no0XData + "," + (Marked ? 1 : 0) + "\n";

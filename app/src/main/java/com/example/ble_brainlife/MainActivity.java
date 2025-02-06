@@ -75,7 +75,6 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
-    @RequiresApi(api = Build.VERSION_CODES.S)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -117,14 +116,11 @@ public class MainActivity extends AppCompatActivity {
         registerReceiver(bluetoothReceiver, filter);
 
         // Request permissions if not granted
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            checkPermissions();
-        }
+        checkPermissions();
 
         mediator = new MediatorControl(this,bleManager);
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.S)
     private void checkPermissions() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED ||
                 ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED ||

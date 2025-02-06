@@ -1,19 +1,15 @@
 package com.example.ble_brainlife;
 
 import android.util.Log;
-import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
-
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
 
 public class MediatorControl implements Mediator {
 
-    public  MainActivity main;
+    public MainActivity main;
     private BleManager ble;
+
 
     public MediatorControl(MainActivity main, BleManager ble) {
         this.main = main;
@@ -44,9 +40,11 @@ public class MediatorControl implements Mediator {
         TextView deviceName = main.findViewById(R.id.deviceNameValue);
         TextView deviceAddress = main.findViewById(R.id.deviceAddressValue);
         TextView deviceServices = main.findViewById(R.id.deviceServicesValue);
+        EditText sessionTimeValue = main.findViewById(R.id.inputSessionTime);
+        main.receivedDataValue = main.findViewById(R.id.receivedDataValue);
         Button disconnectButton = main.findViewById(R.id.disconnectButton);
         Button sendSignalButton = main.findViewById(R.id.sendSignalButton);
-        Button readSignalButton = main.findViewById(R.id.readSignalButton);
+//        Button readSignalButton = main.findViewById(R.id.readSignalButton);
         Button stopSignalButton = main.findViewById(R.id.StopSignalButton);
 
 
@@ -72,23 +70,48 @@ public class MediatorControl implements Mediator {
             byte[] signal = hexStringToByteArray(hexSignal); // Convert hex to byte array
             ble.writeToCharacteristic(signal); // Send the byte array to BLE characteristic
             Log.d("SEND DATA", "SEND");
+            if (!sessionTimeValue.getText().toString().isEmpty()) {
+                int sessionTime = Integer.parseInt(sessionTimeValue.getText().toString());
+                handleReceiveSignalDataWithinSessionTime(sessionTime);
+            }
         });
+
         stopSignalButton.setOnClickListener(v -> {
-            String hexSignal = "2200220D"; // Hexadecimal data to send
-            byte[] signal = hexStringToByteArray(hexSignal); // Convert hex to byte array
+            String hexSignal = "2200220D";
+            byte[] signal = hexStringToByteArray(hexSignal);
 
-            ble.writeToCharacteristic(signal); // Send the byte array to BLE characteristic
+            ble.writeToCharacteristic(signal);
             ble.StopDataEvent();
-            //printCSVFile();
         });
 
 
-        // Handle read signal button click
-        readSignalButton.setOnClickListener(v -> {
-            ble.readFromCharacteristic();
-            ble.Marked =true;
-        });
+//        // Handle read signal button click
+//        readSignalButton.setOnClickListener(v -> {
+//            ble.readFromCharacteristic();
+//            ble.Marked =true;
+//        });
 
+    }
+
+    private void handleReceiveSignalDataWithinSessionTime(int sessionTime) {
+        // Handle session time
+        if (sessionTime > 0) {
+            Log.d("Session Time", "Delaying execution for " + sessionTime + " minutes.");
+
+            // Convert sessionTime to milliseconds
+            long delayMillis = (long) sessionTime * 60 * 1000;
+
+            // Use a Handler tied to the main thread
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                String hexSignal = "2200220D"; // Hexadecimal data to send
+                byte[] signal = hexStringToByteArray(hexSignal); // Convert hex to byte array
+
+                // Perform the delayed operation
+                ble.writeToCharacteristic(signal);
+                ble.StopDataEvent();
+                Log.d("Session Time", "Delayed operation executed after " + sessionTime + " minutes.");
+            }, delayMillis);
+        }
     }
 
 
@@ -98,7 +121,7 @@ public class MediatorControl implements Mediator {
         byte[] data = new byte[len / 2];
         for (int i = 0; i < len; i += 2) {
             data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
-                    + Character.digit(s.charAt(i+1), 16));
+                    + Character.digit(s.charAt(i + 1), 16));
         }
         return data;
     }

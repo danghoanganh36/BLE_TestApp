@@ -16,6 +16,7 @@ import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Log;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -50,8 +51,8 @@ public class BleManager {
     private static final String TAG = "BleManager";
     private static final String CSV_HEADER = "Timestamp (ms),Raw Data,Processed Data,HexData, Marked";
     private static final UUID SERVICE_UUID = UUID.fromString("a6ed0201-d344-460a-8075-b9e8ec90d71b");
-    private static final UUID READ_CHARACTERISTIC_UUID = UUID.fromString("a6ed0202-d344-460a-8075-b9e8ec90d71b");
-    private static final UUID WRITE_CHARACTERISTIC_UUID = UUID.fromString("a6ed0203-d344-460a-8075-b9e8ec90d71b");
+    private static final UUID READ_CHARACTERISTIC_UUID = UUID.fromString("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");
+    private static final UUID WRITE_CHARACTERISTIC_UUID = UUID.fromString("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
     private static final UUID CLIENT_CHARACTERISTIC_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     private static final UUID LED_CHARACTERISTIC_UUID = UUID.fromString("a6ed0205-d344-460a-8075-b9e8ec90d71b");
     public static final String WEBSOCKET_SERVER_URL = "ws://ws-gateway.dev.brainlife.tech";
@@ -67,6 +68,7 @@ public class BleManager {
     private String services;
     private String characteristics;
     private File csvFile;
+    private String latestCsvRow;
     public static List<Byte> dataBuffer = new ArrayList<>();
     public static List<Byte> leftoverData = new ArrayList<>();
     private final List<SignalData> collectedSignalData = new ArrayList<>();
@@ -81,6 +83,11 @@ public class BleManager {
         this.context = context;
         saveCSVFileInPublicDirectory();
     }
+
+    public String getLatestCsvRow() {
+        return latestCsvRow;
+    }
+
     Uri uri;
     private void saveCSVFileInPublicDirectory() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -125,23 +132,28 @@ public class BleManager {
         deviceAddress = device.getAddress();
         logDebug("Connecting to device: " + deviceAddress);
         bluetoothGatt = device.connectGatt(context, false, gattCallback);
-        OkHttpClient client = MessageQueueConnectionManager.getInstance().getClient();
         String webSocketUrl = WEBSOCKET_SERVER_URL;
 
         Request request = new Request.Builder().url(webSocketUrl).build();
 
+        OkHttpClient client = new OkHttpClient();
         webSocket = client.newWebSocket(request, new WebSocketListener() {
             @Override
             public void onOpen(@NonNull WebSocket webSocket, @NonNull Response response) {
+                Log.d(TAG, "WebSocket connection opened: " + response.message());
+            }
+
+            @Override
+            public void onFailure(@NonNull WebSocket webSocket, @NonNull Throwable t, @Nullable Response response) {
+                if (response != null) {
+                    Log.e(TAG, "WebSocket failure: " + response.message());
+                }
+                Log.e(TAG, "WebSocket error: " + t.getMessage(), t);
             }
 
             @Override
             public void onMessage(@NonNull WebSocket webSocket, @NonNull String text) {
                 Log.d(TAG, "Message received from server: " + text);
-            }
-
-            @Override
-            public void onFailure(@NonNull WebSocket webSocket, @NonNull Throwable t, @Nullable Response response) {
             }
 
             @Override
@@ -157,11 +169,13 @@ public class BleManager {
 
     private void postToCloud(List<SignalData> dataToSend) {
         if (webSocket == null) {
-            Log.e(TAG, "WebSocket is not connected.");
+            Log.e("WebSocket", "WebSocket is not connected.");
             return;
         }
 
         try {
+            Log.e("WebSocket", webSocket.toString());
+
             // Construct JSON payload
             String userId = UUID.randomUUID().toString();
 
@@ -193,8 +207,9 @@ public class BleManager {
 
             // Send message via WebSocket
 //            webSocket.send(base64Payload);
+            Log.e("WebSocket", "Sending payload: " + payload);
             webSocket.send(payload);
-            Log.d(TAG, "Message sent to Redpanda via WebSocket.");
+            Log.d("WebSocket", "Message sent to Cloud via WebSocket.");
         } catch (Exception e) {
             Log.e(TAG, "Error sending data to WebSocket: " + e.getMessage());
         }
@@ -339,7 +354,6 @@ public class BleManager {
             }
 
             dataBuffer.subList(0, endIdx + 1).clear();
-            Log.e(TAG, "Recieve Signal :"+ByteArrayUtils.toHexString(completeSignal));
             return ByteArrayUtils.toHexString(completeSignal);
             // Remove the processed data from the buffer
         } else {
@@ -398,10 +412,7 @@ public class BleManager {
             Log.e(TAG, "Error converting ASCII signal to integer: " + e.getMessage());
         }
 
-        if (signalInteger >= 8388608) {
-            signalInteger -= 16777216;
-        }
-        double calculatedValue = (signalInteger * 1.2)/8388608;
+        double calculatedValue = (signalInteger - 8388608) * 1.6/8388608;
 
         collectedSignalData.add(new SignalData(calculatedValue, signalTimestamp));
 
@@ -410,18 +421,20 @@ public class BleManager {
         }
 
         if (collectedSignalData.size() == MAX_DATA_SIZE) {
+            Log.d("Data size", "Data size reached " + collectedSignalData.size());
             postToCloud(new ArrayList<>(collectedSignalData));
         }
 
         milliseconds = System.currentTimeMillis();
         String csvRow = milliseconds + "," + signalInteger + "," + calculatedValue + "," + no0XData + "," + (Marked ? 1 : 0) + "\n";
         logDebug(csvRow);
+        latestCsvRow = csvRow;
         Marked = false;
 
         if (!isStoped) {
             csvRows.add(csvRow);
 
-//            // Save rows to the current file if the limit is reached
+            //Save rows to the current file if the limit is reached
             if (csvRows.size() >= MAX_ROWS) {
                 saveCsvRowsToCurrentFile();
             }

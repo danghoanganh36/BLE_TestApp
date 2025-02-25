@@ -50,9 +50,9 @@ public class BleManager {
 
     private static final String TAG = "BleManager";
     private static final String CSV_HEADER = "Timestamp (ms),Raw Data,Processed Data,HexData, Marked";
-    private static final UUID SERVICE_UUID = UUID.fromString("a6ed0201-d344-460a-8075-b9e8ec90d71b");
-    private static final UUID READ_CHARACTERISTIC_UUID = UUID.fromString("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");
-    private static final UUID WRITE_CHARACTERISTIC_UUID = UUID.fromString("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
+    public static final UUID SERVICE_UUID = UUID.fromString("a6ed0201-d344-460a-8075-b9e8ec90d71b");
+    public static final UUID READ_CHARACTERISTIC_UUID = UUID.fromString("a6ed0202-d344-460a-8075-b9e8ec90d71b");
+    public static final UUID WRITE_CHARACTERISTIC_UUID = UUID.fromString("a6ed0203-d344-460a-8075-b9e8ec90d71b");
     private static final UUID CLIENT_CHARACTERISTIC_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     private static final UUID LED_CHARACTERISTIC_UUID = UUID.fromString("a6ed0205-d344-460a-8075-b9e8ec90d71b");
     public static final String WEBSOCKET_SERVER_URL = "ws://ws-gateway.dev.brainlife.tech";
@@ -90,38 +90,25 @@ public class BleManager {
 
     Uri uri;
     private void saveCSVFileInPublicDirectory() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ContentValues contentValues = new ContentValues();
-            contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, "ble_signals_log.csv");
-            contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "text/csv");
-            contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS);
+        ContentValues contentValues = new ContentValues();
+        contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, "ble_signals_log.csv");
+        contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "text/csv");
+        contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS);
 
-            ContentResolver contentResolver = context.getContentResolver();
-            uri = contentResolver.insert(MediaStore.Files.getContentUri("external"), contentValues);
-            if (uri != null) {
-                try {
-                    OutputStream outputStream = contentResolver.openOutputStream(uri);
-                    if (outputStream != null) {
-                        // Write the CSV header
-                        outputStream.write((CSV_HEADER).getBytes());
-                        outputStream.write("\n".getBytes());
-                        outputStream.flush();
-                        outputStream.close();
-                    }
-                } catch (IOException e) {
-                    Log.e(TAG, "Error writing CSV file to public Documents directory", e);
+        ContentResolver contentResolver = context.getContentResolver();
+        uri = contentResolver.insert(MediaStore.Files.getContentUri("external"), contentValues);
+        if (uri != null) {
+            try {
+                OutputStream outputStream = contentResolver.openOutputStream(uri);
+                if (outputStream != null) {
+                    // Write the CSV header
+                    outputStream.write((CSV_HEADER).getBytes());
+                    outputStream.write("\n".getBytes());
+                    outputStream.flush();
+                    outputStream.close();
                 }
-            }
-        } else {
-            File storageDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS);
-            if (!storageDir.exists()) {
-                storageDir.mkdirs(); // Create the directory if it doesn't exist
-            }
-            csvFile = new File(storageDir, "ble_signals_log.csv");
-            try (FileWriter writer = new FileWriter(csvFile, true)) {
-                writer.append(CSV_HEADER+",DaHell").append("\n");
             } catch (IOException e) {
-                Log.e(TAG, "Error creating CSV file in public Documents directory", e);
+                Log.e(TAG, "Error writing CSV file to public Documents directory", e);
             }
         }
     }
@@ -412,7 +399,7 @@ public class BleManager {
             Log.e(TAG, "Error converting ASCII signal to integer: " + e.getMessage());
         }
 
-        double calculatedValue = (signalInteger - 8388608) * 1.6/8388608;
+        double calculatedValue = (signalInteger - 8388608) * 3.3/8388608;
 
         collectedSignalData.add(new SignalData(calculatedValue, signalTimestamp));
 

@@ -96,7 +96,6 @@ public class MediatorControl implements Mediator {
     private void handleReceiveSignalDataWithinSessionTime(int sessionTime) {
         // Handle session time
         if (sessionTime > 0) {
-            Log.d("Session Time", "Delaying execution for " + sessionTime + " minutes.");
 
             // Convert sessionTime to milliseconds
             long delayMillis = (long) sessionTime * 60 * 1000;
@@ -109,7 +108,6 @@ public class MediatorControl implements Mediator {
                 // Perform the delayed operation
                 ble.writeToCharacteristic(signal);
                 ble.StopDataEvent();
-                Log.d("Session Time", "Delayed operation executed after " + sessionTime + " minutes.");
             }, delayMillis);
         }
     }

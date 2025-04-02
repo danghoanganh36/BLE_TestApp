@@ -1,6 +1,7 @@
 package com.example.ble_brainlife;
 
 import android.annotation.SuppressLint;
+
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCallback;
@@ -27,18 +28,22 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Queue;
+import java.util.Stack;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
+import java.text.SimpleDateFormat;
+import java.util.function.Consumer;
 
 public class BleManager {
 
     private static final String TAG = "BleManager";
-    private static final String CSV_HEADER = "Timestamp (ms),Raw Data,Processed Data,HexData, Marked";
+    private static final String CSV_HEADER = "Signal Integer , Voltage Value ,Raw Signal(Hex), Header 24 Data, Header 23 Data";
     private static final UUID SERVICE_UUID = UUID.fromString("a6ed0201-d344-460a-8075-b9e8ec90d71b");
     private static final UUID READ_CHARACTERISTIC_UUID = UUID.fromString("a6ed0202-d344-460a-8075-b9e8ec90d71b");
     private static final UUID WRITE_CHARACTERISTIC_UUID = UUID.fromString("a6ed0203-d344-460a-8075-b9e8ec90d71b");
@@ -57,6 +62,8 @@ public class BleManager {
     public static List<Byte> leftoverData = new ArrayList<>();
 
 
+
+    public SignalProcessor signalProcessor;
     public boolean Marked = false;
     //short MarkedAsNumber = Marked ? 1 : 0;
     // Executor service to handle logging in parallel
@@ -64,6 +71,7 @@ public class BleManager {
 
     public BleManager(Context context) {
         this.context = context;
+        signalProcessor = new SignalProcessor();
         saveCSVFileInPublicDirectory();
     }
     Uri uri;
@@ -201,289 +209,90 @@ public class BleManager {
             }
         }
 
+
+
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
+
             byte[] receivedData = characteristic.getValue();
-            Log.d("Charateristic length", String.valueOf(characteristic.getValue().length));
-            Log.d("Charateristic", Arrays.toString(characteristic.getValue()));
-            // If there's leftover data from the previous signal, append it
-            if (!leftoverData.isEmpty()) {
-                dataBuffer.addAll(leftoverData);
-                leftoverData.clear(); // Clear leftover data
-            }
 
-            // Add the new received data to the buffer
-            for (byte b : receivedData) {
-                dataBuffer.add(b);
-            }
 
-            // Process data to detect complete signals
-            logReceivedSignal(processBuffer());
+            signalProcessor.processStack();
         }
     };
 
-    private String processBuffer() {
-        int startIdx = -1;
-        int endIdx = -1;
-
-        // Look for start (0x24) and end (0x0A) markers
-        for (int i = 0; i < dataBuffer.size(); i++) {
-            if (dataBuffer.get(i) == 0x24 && startIdx == -1) { // Start byte found
-                startIdx = i;
-            } else if (dataBuffer.get(i) == 0x0A && startIdx != -1) { // End byte found after start byte
-                endIdx = i;
-                break;
-            }
-        }
-
-        // If we have found a complete signal
-        if (startIdx != -1 && endIdx != -1) {
-            List<Byte> completeSignalList = dataBuffer.subList(startIdx, endIdx + 1);
-            byte[] completeSignal = new byte[completeSignalList.size()];
-            for (int i = 0; i < completeSignalList.size(); i++) {
-                completeSignal[i] = completeSignalList.get(i);
-            }
-
-            dataBuffer.subList(0, endIdx + 1).clear();
-            Log.e(TAG, "Recieve Signal :"+ByteArrayUtils.toHexString(completeSignal));
-            return ByteArrayUtils.toHexString(completeSignal);
-            // Remove the processed data from the buffer
-        } else {
-            // If no complete signal, save the leftover data
-            leftoverData = new ArrayList<>(dataBuffer);
-            dataBuffer.clear();
-        }
-        return "";
-    }
-
-    private String hexToAscii(String hexStr) {
-        StringBuilder output = new StringBuilder("");
-        for (int i = 0; i < hexStr.length(); i += 2) {
-            String str = hexStr.substring(i, i + 2);
-            output.append((char) Integer.parseInt(str, 16));
-        }
-        return output.toString();
-    }
 
 
-    Uri csvUri; int signalInteger;String numberString;
-    // Format the result
-    int MAX_ROWS = 10000;
-    long milliseconds ;
-    List<String> csvRows = new ArrayList<>(); // List to store CSV rows
-    boolean isStoped = false;
-    private void logReceivedSignal(final String signalData) {
 
-        String no0XData = signalData.replace("0x", "");
-        String cleanSignalData = signalData.replace("0x", "").replace(" ", "");
 
-        int startIndex = cleanSignalData.indexOf("24");
-        if (startIndex == -1) {
-            Log.d(TAG, "No start marker (0x24) found.");
-            return;
-        }
 
-        int endIndex = cleanSignalData.indexOf("0A", startIndex);
-        if (endIndex == -1) {
-            Log.d(TAG, "No end marker (0A) found.");
-            return;
-        }
+    Uri csvUri;
 
-        String signalHex = cleanSignalData.substring(startIndex + 2, endIndex);
-        String asciiSignal = hexToAscii(signalHex);
+    List<Integer> signalIntegers = new ArrayList<>();
+    List<Double> calculatedValues = new ArrayList<>(); // Corrected reference
+    List<String> rawSignals = new ArrayList<>();
+    List<String> header24Values = new ArrayList<>();
+    List<String> header23Values = new ArrayList<>();
 
-        try {
-            String numberString = asciiSignal.replaceAll("[^0-9]", "");
-            if (!numberString.isEmpty()) {
-                signalInteger = Integer.parseInt(numberString);
-                Log.d(TAG, "Extracted Integer Signal: " + signalInteger);
-            } else {
-                Log.d(TAG, "No numeric data found in the extracted signal.");
-            }
-        } catch (NumberFormatException e) {
-            Log.e(TAG, "Error converting ASCII signal to integer: " + e.getMessage());
-        }
 
-        if (signalInteger >= 8388608) {
-            signalInteger -= 16777216;
-        }
-        double calculatedValue = (signalInteger * 1.2)/8388608;;
 
-        milliseconds = System.currentTimeMillis();
-        String csvRow = milliseconds + "," + signalInteger + "," + calculatedValue + "," + no0XData + "," + (Marked ? 1 : 0) + "\n";
-        logDebug(csvRow);
-        Marked = false;
-
-        if (!isStoped) {
-            csvRows.add(csvRow);
-
-//            // Save rows to the current file if the limit is reached
-            if (csvRows.size() >= MAX_ROWS) {
-                saveCsvRowsToCurrentFile();
-            }
-        }
-    }
 
     public void StopDataEvent(){
-        logDebug("Stop + " + csvRows.size());
-        Log.e(TAG,"Stop + " + csvRows.size());
-        isStoped = true;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-
-            if (uri != null) {
-                try {
-                    ContentResolver contentResolver = context.getContentResolver();
-                    try (OutputStream outputStream = contentResolver.openOutputStream(uri, "wa")) { // "wa" for append
-                        for (String row : csvRows) {
-                            outputStream.write(row.getBytes());
-                        }
-                        outputStream.flush();
-                    }
-                } catch (IOException e) {
-                    Log.e(TAG, "Error writing to CSV file using OutputStream", e);
-                }
-            } else {
-                Log.e(TAG, "Failed to get URI for CSV file");
-            }
-        } else {
-            if (csvFile != null && csvFile.exists()) {
-                try (FileOutputStream fileOutputStream = new FileOutputStream(csvFile, true)) { // true for append
-                    for (String row : csvRows) {
-                        fileOutputStream.write(row.getBytes());
-
-                    }
-
-                    fileOutputStream.flush();
-
-                } catch (IOException e) {
-                    Log.e(TAG, "Error writing to CSV file using FileOutputStream", e);
-                }
-            } else {
-                Log.e(TAG, "CSV file does not exist or is null");
-            }
-        }
-        /*if (csvUri != null) {
-            try {
-                ContentResolver contentResolver = context.getContentResolver();
-                try (OutputStream outputStream = contentResolver.openOutputStream(csvUri, "wa")) {
-                    if (outputStream != null) {
-                        for (String row : csvRows) {
-                            outputStream.write(row.getBytes());
-                        }
-                        outputStream.flush();
-                    } else {
-                        Log.e(TAG, "OutputStream is null");
-                    }
-                }
-            } catch (IOException e) {
-                Log.e(TAG, "Error writing to CSV file using OutputStream", e);
-            }
-        } else if (csvFile != null && csvFile.exists()) {
-            try (FileOutputStream fileOutputStream = new FileOutputStream(csvFile, true)) {
-                for (String row : csvRows) {
-                    fileOutputStream.write(row.getBytes());
-
-                }
-
-                fileOutputStream.flush();
-            } catch (IOException e) {
-                Log.e(TAG, "Error writing to CSV file using FileOutputStream", e);
-            }
-        } else {
-            Log.e(TAG, "CSV file does not exist or is null");
-        }*/
-
-        csvRows.clear(); // Clear the list after writing
-        isStoped = false;
+        saveCsvRowsToCurrentFile();
     }
 
     private void saveCsvRowsToCurrentFile() {
-        final List<String> rowsToSave = new ArrayList<>(csvRows); // Copy rows to avoid modification
-        csvRows.clear(); // Clear the list after copying
+
+        signalIntegers = signalProcessor.signalIntegers;
+        calculatedValues = signalProcessor.calculatedValues;
+        header23Values= signalProcessor.header23Values;
+        header24Values = signalProcessor.header24Values;
+
 
         logExecutor.execute(() -> {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-
                 if (uri != null) {
                     try {
                         ContentResolver contentResolver = context.getContentResolver();
-                        try (OutputStream outputStream = contentResolver.openOutputStream(uri, "wa")) { // "wa" for append
-                            for (String row : rowsToSave) {
-                                outputStream.write(row.getBytes());
-                            }
-                            outputStream.flush();
-                            outputStream.close();
-                        }
-                    } catch (IOException e) {
-                        Log.e(TAG, "Error writing to CSV file using OutputStream", e);
-                    }
-                } else {
-                    Log.e(TAG, "Failed to get URI for CSV file");
-                }
-            }
-        });
-    }
-
-
-    private void logReceivedSignalInParallel(final String signalData) {
-        logExecutor.execute(() -> {
-            // Debugging
-            Log.d(TAG, "Signal Data: " + signalData);
-
-            // Extract the number from the signalData
-            String numberString = signalData.replaceAll("[^0-9]", ""); // Remove non-numeric characters
-            double number;
-            try {
-                number = Double.parseDouble(numberString);
-            } catch (NumberFormatException e) {
-                Log.e(TAG, "Error parsing number from signal data", e);
-                return;
-            }
-
-            // Perform the calculation
-            double calculatedValue = ((number - 8388608) * 1.2)/8388608;;
-            SimpleDateFormat utcFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault());
-            utcFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-            String utcTimestamp = utcFormat.format(new Date());
-            // Format the result
-            long milliseconds = System.currentTimeMillis(); // Get time in milliseconds
-            String csvRow = utcTimestamp   + "," + calculatedValue +"," +  ( (Marked) ? 1 : 0) + "\n";
-            logDebug(csvRow);
-
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // For Android Q and above
-                //Uri csvUri =uri;
-                if (csvUri != null) {
-                    try {
-                        ContentResolver contentResolver = context.getContentResolver();
-                        try (OutputStream outputStream = contentResolver.openOutputStream(uri, "wa")) { // "wa" for append
+                        try (OutputStream outputStream = contentResolver.openOutputStream(uri, "wa")) {
                             if (outputStream != null) {
-                                outputStream.write(csvRow.getBytes());
+                                StringBuilder csvContent = new StringBuilder();
+                                for (int i = 0; i < rawSignals.size(); i++) {
+                                    csvContent.
+                                            append(signalIntegers.get(i)).append(",")
+                                            .append(calculatedValues.get(i)).append(",")
+                                            .append(rawSignals.get(i)).append(",");
+
+                                    if (i < header24Values.size()) {
+                                        csvContent.append(",").append(header24Values.get(i));
+                                    } else {
+                                        csvContent.append(","); // Placeholder if no value
+                                    }
+
+                                    if (i < header23Values.size()) {
+                                        csvContent.append(",").append(header23Values.get(i));
+                                    } else {
+                                        csvContent.append(",");
+                                    }
+
+                                    csvContent.append("\n");
+                                }
+                                outputStream.write(csvContent.toString().getBytes());
                                 outputStream.flush();
-                            } else {
-                                Log.e(TAG, "OutputStream is null");
                             }
                         }
                     } catch (IOException e) {
-                        Log.e(TAG, "Error writing to CSV file using OutputStream", e);
+                        Log.e(TAG, "Error writing to CSV file", e);
                     }
-                } else {
-                    Log.e(TAG, "Failed to get URI for CSV file");
-                }
-            } else {
-                // For Android versions below Q
-                if (csvFile != null && csvFile.exists()) {
-                    try (FileOutputStream fileOutputStream = new FileOutputStream(csvFile, true)) { // true for append
-                        fileOutputStream.write(csvRow.getBytes());
-                        fileOutputStream.flush();
-                    } catch (IOException e) {
-                        Log.e(TAG, "Error writing to CSV file using FileOutputStream", e);
-                    }
-                } else {
-                    Log.e(TAG, "CSV file does not exist or is null");
                 }
             }
+
+            // Clear lists after saving
+            signalIntegers.clear();
+            calculatedValues.clear();
+            rawSignals.clear();
+            header24Values.clear();
+            header23Values.clear();
         });
     }
 

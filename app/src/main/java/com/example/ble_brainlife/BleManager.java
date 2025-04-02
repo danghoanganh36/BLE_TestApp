@@ -72,7 +72,7 @@ public class BleManager {
     private File csvFile;
     public static List<Byte> dataBuffer = new ArrayList<>();
     public static List<Byte> leftoverData = new ArrayList<>();
-
+    public SignalProcessor signalProcessor;
 
     public boolean Marked = false;
     //short MarkedAsNumber = Marked ? 1 : 0;
@@ -81,6 +81,7 @@ public class BleManager {
 
     public BleManager(Context context) {
         this.context = context;
+        signalProcessor = new SignalProcessor();
         saveCSVFileInPublicDirectory();
     }
 
@@ -221,77 +222,12 @@ public class BleManager {
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
             byte[] receivedData = characteristic.getValue();
-            Log.i("Received data", Arrays.toString(receivedData));
-            long receivedTimestamp = System.currentTimeMillis();
-
-            if (!leftoverData.isEmpty()) {
-                dataBuffer.addAll(leftoverData);
-                leftoverData.clear();
-            }
-
-            for (byte b : receivedData) {
-                dataBuffer.add(b);
-            }
-
-            List<String> signals = processBuffer();
-            for (String signal : signals) {
-                logReceivedSignal(signal, receivedTimestamp);
-            }
+            signalProcessor.addData(receivedData);
+            Log.i("Received Data", Arrays.toString(receivedData));
+            signalProcessor.processStack();
         }
 
     };
-
-    private List<String> processBuffer() {
-        List<String> signals = new ArrayList<>();
-
-        int i = 0;
-        while (i < dataBuffer.size()) {
-            if (dataBuffer.get(i) == 0x24) {
-                int startIdx = i;
-                int endIdx = -1;
-
-                for (int j = i + 1; j < dataBuffer.size(); j++) {
-                    if (dataBuffer.get(j) == 0x0A) {
-                        endIdx = j;
-                        break;
-                    }
-                }
-
-                if (endIdx != -1) {
-                    List<Byte> completeSignalList = dataBuffer.subList(startIdx, endIdx + 1);
-                    byte[] completeSignal = new byte[completeSignalList.size()];
-                    for (int k = 0; k < completeSignalList.size(); k++) {
-                        completeSignal[k] = completeSignalList.get(k);
-                    }
-
-                    String hex = ByteArrayUtils.toHexString(completeSignal);
-                    signals.add(hex);
-
-                    dataBuffer.subList(0, endIdx + 1).clear();
-                    i = 0;
-                } else {
-                    break;
-                }
-            } else {
-                dataBuffer.remove(i);
-            }
-        }
-
-        leftoverData = new ArrayList<>(dataBuffer);
-        dataBuffer.clear();
-
-        return signals;
-    }
-
-
-    private String hexToAscii(String hexStr) {
-        StringBuilder output = new StringBuilder("");
-        for (int i = 0; i < hexStr.length(); i += 2) {
-            String str = hexStr.substring(i, i + 2);
-            output.append((char) Integer.parseInt(str, 16));
-        }
-        return output.toString();
-    }
 
     Uri csvUri;
     int signalInteger;
@@ -304,86 +240,93 @@ public class BleManager {
     List<Double> calculatedValues = new ArrayList<>();
     List<String> rawSignals = new ArrayList<>();
     List<String> header24Data = new ArrayList<>();
-    List<String> header25Data = new ArrayList<>();
+    List<String> header23Data = new ArrayList<>();
 
-    private void logReceivedSignal(final String signalData, final long signalTimestamp) {
-        Log.i("Received hex data", signalData);
-        String cleanSignalData = signalData.replace("0x", "").replace(" ", "");
-
-        int packetIndex = cleanSignalData.indexOf("0B");
-        int packetCount = 0;
-        int signalInteger = 0;
-        String header = (cleanSignalData.length() >= 2) ? cleanSignalData.substring(0, 2) : "";
-        double calculatedValue = 0;
-
-        rawSignals.add(cleanSignalData);
-
-        Log.i("HEADER", header);
-
-        switch (header) {
-            case "01":
-            case "39":
-                signalIntegers.add(signalInteger);
-                calculatedValues.add(calculatedValue);
-                return;
-            case "24":
-            case "25":
-                int startIndex = cleanSignalData.indexOf(header);
-                int endIndex = cleanSignalData.indexOf("0A", startIndex);
-                if (startIndex == -1 && endIndex == -1) {
-                    signalIntegers.add(signalInteger);
-                    calculatedValues.add(calculatedValue);
-                    return;
-                }
-                ;
-
-                String signalHex = cleanSignalData.substring(startIndex + 2, endIndex);
-                String asciiSignal = hexToAscii(signalHex);
-
-                if (packetIndex != -1 && packetIndex + 4 <= cleanSignalData.length()) {
-                    String packetHex = cleanSignalData.substring(packetIndex + 2, packetIndex + 6);
-                    packetCount = Integer.parseInt(packetHex, 16);
-                }
-
-                try {
-                    String numberString = asciiSignal.replaceAll("[^0-9]", "");
-                    signalInteger = (!numberString.isEmpty()) ? Integer.parseInt(numberString) : 0;
-                } catch (NumberFormatException e) {
-                    Log.e(TAG, "Error converting ASCII signal to integer: " + e.getMessage());
-                }
-
-                calculatedValue = (signalInteger - 8388608) * 3.3 / 8388608;
-
-                if (header.equals("24")) {
-                    header24Data.add(asciiSignal);
-                } else {
-                    header25Data.add(asciiSignal);
-                }
-                break;
-
-            default:
-                signalIntegers.add(signalInteger);
-                calculatedValues.add(calculatedValue);
-                return;
-        }
-
-        Log.i("Signal Integer", String.valueOf(signalInteger));
-        Log.i("Calculated Value", String.valueOf(calculatedValue));
-        signalIntegers.add(signalInteger);
-        calculatedValues.add(calculatedValue);
-
-        // Save to CSV if limit is reached
-        if (signalIntegers.size() >= MAX_ROWS) {
-            saveCsvRowsToCurrentFile();
-        }
-    }
+//    private void logReceivedSignal(final String signalData, final long signalTimestamp) {
+//        Log.i("Received hex data", signalData);
+//        String cleanSignalData = signalData.replace("0x", "").replace(" ", "");
+//
+//        int packetIndex = cleanSignalData.indexOf("0B");
+//        int packetCount = 0;
+//        int signalInteger = 0;
+//        String header = (cleanSignalData.length() >= 2) ? cleanSignalData.substring(0, 2) : "";
+//        double calculatedValue = 0;
+//
+//        rawSignals.add(cleanSignalData);
+//
+//        Log.i("HEADER", header);
+//
+//        switch (header) {
+//            case "01":
+//            case "39":
+//                signalIntegers.add(signalInteger);
+//                calculatedValues.add(calculatedValue);
+//                return;
+//            case "24":
+//            case "25":
+//                int startIndex = cleanSignalData.indexOf(header);
+//                int endIndex = cleanSignalData.indexOf("0A", startIndex);
+//                if (startIndex == -1 && endIndex == -1) {
+//                    signalIntegers.add(signalInteger);
+//                    calculatedValues.add(calculatedValue);
+//                    return;
+//                }
+//                ;
+//
+//                String signalHex = cleanSignalData.substring(startIndex + 2, endIndex);
+//                String asciiSignal = hexToAscii(signalHex);
+//
+//                if (packetIndex != -1 && packetIndex + 4 <= cleanSignalData.length()) {
+//                    String packetHex = cleanSignalData.substring(packetIndex + 2, packetIndex + 6);
+//                    packetCount = Integer.parseInt(packetHex, 16);
+//                }
+//
+//                try {
+//                    String numberString = asciiSignal.replaceAll("[^0-9]", "");
+//                    signalInteger = (!numberString.isEmpty()) ? Integer.parseInt(numberString) : 0;
+//                } catch (NumberFormatException e) {
+//                    Log.e(TAG, "Error converting ASCII signal to integer: " + e.getMessage());
+//                }
+//
+//                calculatedValue = (signalInteger - 8388608) * 3.3 / 8388608;
+//
+//                if (header.equals("24")) {
+//                    header24Data.add(asciiSignal);
+//                } else {
+//                    header25Data.add(asciiSignal);
+//                }
+//                break;
+//
+//            default:
+//                signalIntegers.add(signalInteger);
+//                calculatedValues.add(calculatedValue);
+//                return;
+//        }
+//
+//        Log.i("Signal Integer", String.valueOf(signalInteger));
+//        Log.i("Calculated Value", String.valueOf(calculatedValue));
+//        signalIntegers.add(signalInteger);
+//        calculatedValues.add(calculatedValue);
+//
+//        // Save to CSV if limit is reached
+//        if (signalIntegers.size() >= MAX_ROWS) {
+//            saveCsvRowsToCurrentFile();
+//        }
+//    }
 
     public void StopDataEvent() {
-        isStopped = false;
+        //isStopped = false;
         saveCsvRowsToCurrentFile();
     }
 
     private void saveCsvRowsToCurrentFile() {
+
+        signalIntegers = signalProcessor.signalIntegers;
+        calculatedValues = signalProcessor.calculatedValues;
+        rawSignals = signalProcessor.rawSignals;
+        header23Data= signalProcessor.header24Values;
+        header24Data = signalProcessor.header24Values;
+
         Log.i("Saving CSV", "Saving CSV rows to file");
         logExecutor.execute(() -> {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -408,8 +351,8 @@ public class BleManager {
                                         csvContent.append(","); // Placeholder if no value
                                     }
 
-                                    if (i < header25Data.size()) {
-                                        csvContent.append(",").append(header25Data.get(i));
+                                    if (i < header23Data.size()) {
+                                        csvContent.append(",").append(header23Data.get(i));
                                     } else {
                                         csvContent.append(",");
                                     }
@@ -434,7 +377,7 @@ public class BleManager {
             calculatedValues.clear();
             rawSignals.clear();
             header24Data.clear();
-            header25Data.clear();
+            header23Data.clear();
         });
     }
 

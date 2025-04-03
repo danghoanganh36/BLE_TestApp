@@ -14,7 +14,7 @@ public class SignalProcessor {
     Queue<Byte> dataQueue = new LinkedList<>();
     private Consumer<String> signalProcessor; // Delegate variable
     public List<String> header24Values = new ArrayList<>();
-    public List<String> header23Values = new ArrayList<>();
+    public List<String> header25Values = new ArrayList<>();
 
     public List<Integer> signalIntegers = new ArrayList<>();
     public List<Double> calculatedValues = new ArrayList<>(); // Corrected reference
@@ -71,9 +71,8 @@ public class SignalProcessor {
     }
 
     private void header24Process(final String signalData) {
-        Log.i("HexSignal", signalData);
+        Log.i("SignalHeader24", "Header 24 Processed: " + signalData);
         String asciiSignal = hexToAscii(signalData);
-
         rawSignals.add(asciiSignal);
         int signalInteger = 0;
         try {
@@ -86,12 +85,12 @@ public class SignalProcessor {
         double calculatedValue = (signalInteger - 8388608) * 3.3 / 8388608;
         header24Values.add(asciiSignal);
         calculatedValues.add(calculatedValue);
-
-        /// More and more
-
     }
+
     private void header25Process(final String signalData) {
+        Log.i("SignalHeader25", "Header 25 Processed: " + signalData);
         String asciiSignal = hexToAscii(signalData);
+        rawSignals.add(asciiSignal);
         int signalInteger = 0;
         try {
             String numberString = asciiSignal.replaceAll("[^0-9]", "");
@@ -100,10 +99,9 @@ public class SignalProcessor {
             Log.e(TAG, "Error converting ASCII signal to integer: " + e.getMessage());
         }
         signalIntegers.add(signalInteger);
-        double  calculatedValue = (signalInteger - 8388608) * 3.3 / 8388608;
-        header23Values.add(asciiSignal);
-        /// More and more
-
+        double calculatedValue = (signalInteger - 8388608) * 3.3 / 8388608;
+        header25Values.add(asciiSignal);
+        calculatedValues.add(calculatedValue);
     }
 
     public void clearData(){
@@ -112,7 +110,7 @@ public class SignalProcessor {
         calculatedValues.clear();
         rawSignals.clear();
         header24Values.clear();
-        header23Values.clear();
+        header25Values.clear();
     }
 
     private String hexToAscii(String hexStr) {

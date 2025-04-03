@@ -240,7 +240,7 @@ public class BleManager {
     List<Double> calculatedValues = new ArrayList<>();
     List<String> rawSignals = new ArrayList<>();
     List<String> header24Data = new ArrayList<>();
-    List<String> header23Data = new ArrayList<>();
+    List<String> header25Data = new ArrayList<>();
 
 //    private void logReceivedSignal(final String signalData, final long signalTimestamp) {
 //        Log.i("Received hex data", signalData);
@@ -324,7 +324,7 @@ public class BleManager {
         signalIntegers = signalProcessor.signalIntegers;
         calculatedValues = signalProcessor.calculatedValues;
         rawSignals = signalProcessor.rawSignals;
-        header23Data= signalProcessor.header24Values;
+        header25Data= signalProcessor.header25Values;
         header24Data = signalProcessor.header24Values;
 
         Log.i("Saving CSV", "Saving CSV rows to file");
@@ -351,8 +351,8 @@ public class BleManager {
                                         csvContent.append(","); // Placeholder if no value
                                     }
 
-                                    if (i < header23Data.size()) {
-                                        csvContent.append(",").append(header23Data.get(i));
+                                    if (i < header25Data.size()) {
+                                        csvContent.append(",").append(header25Data.get(i));
                                     } else {
                                         csvContent.append(",");
                                     }
@@ -377,7 +377,7 @@ public class BleManager {
             calculatedValues.clear();
             rawSignals.clear();
             header24Data.clear();
-            header23Data.clear();
+            header25Data.clear();
         });
     }
 

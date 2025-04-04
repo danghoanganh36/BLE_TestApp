@@ -17,7 +17,11 @@ import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Log;
+import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -50,6 +54,7 @@ public class BleManager {
     private static final UUID CLIENT_CHARACTERISTIC_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     private static final UUID LED_CHARACTERISTIC_UUID = UUID.fromString("a6ed0205-d344-460a-8075-b9e8ec90d71b");
 
+    private WebSocket webSocket;
     private final Context context;
     public BluetoothGatt bluetoothGatt;
     public Mediator mediator;
@@ -74,6 +79,7 @@ public class BleManager {
         signalProcessor = new SignalProcessor();
         saveCSVFileInPublicDirectory();
     }
+
     Uri uri;
     private void saveCSVFileInPublicDirectory() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -132,16 +138,14 @@ public class BleManager {
                 mediator.notify(this, "EnableSwitchButton");
                 gatt.discoverServices();
             }
-        }
 
-//        @Override
-//        public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
-//            if (status == BluetoothGatt.GATT_SUCCESS) {
-//                Log.d(TAG, "MTU size updated to: " + mtu);
-//            } else {
-//                Log.e(TAG, "Failed to update MTU size");
-//            }
-//        }
+            if (newState == BluetoothGatt.STATE_DISCONNECTING) {
+                if (webSocket != null) {
+                    webSocket.close(1000, "Stopping posting to cloud.");
+                    webSocket = null;
+                }
+            }
+        }
 
         @SuppressLint("MissingPermission")
         @Override
@@ -296,7 +300,6 @@ public class BleManager {
         });
     }
 
-
     private void logDebug(final String message) {
         logExecutor.execute(() -> {
             String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(new Date());
@@ -380,9 +383,5 @@ public class BleManager {
 
     public String getCharacteristics() {
         return characteristics != null ? characteristics : "None";
-    }
-
-    public File getCSVFile() {
-        return csvFile;
     }
 }

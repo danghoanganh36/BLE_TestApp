@@ -71,9 +71,9 @@ public class SignalProcessor {
     }
 
     private void header24Process(final String signalData) {
-        Log.i("SignalHeader24", "Header 24 Processed: " + signalData);
         String asciiSignal = hexToAscii(signalData);
-        rawSignals.add(asciiSignal);
+        String rawSignal = String.format("%s%s%s", "24", signalData, "0A");
+        rawSignals.add(rawSignal);
         int signalInteger = 0;
         try {
             String numberString = asciiSignal.replaceAll("[^0-9]", "");
@@ -88,9 +88,9 @@ public class SignalProcessor {
     }
 
     private void header25Process(final String signalData) {
-        Log.i("SignalHeader25", "Header 25 Processed: " + signalData);
         String asciiSignal = hexToAscii(signalData);
-        rawSignals.add(asciiSignal);
+        String rawSignal = String.format("%s%s%s", "25", signalData, "0A");
+        rawSignals.add(rawSignal);
         int signalInteger = 0;
         try {
             String numberString = asciiSignal.replaceAll("[^0-9]", "");

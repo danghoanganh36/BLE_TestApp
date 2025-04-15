@@ -46,14 +46,8 @@ public class MainActivity extends AppCompatActivity {
     private BluetoothDevice connectedDevice; // Track the connected device
 
     public TextView receivedDataValue;
-
-
-
     public Mediator mediator;
-
     public Button SwitchToLayout;
-
-
 
     private final BroadcastReceiver bluetoothReceiver = new BroadcastReceiver() {
         @Override
@@ -218,10 +212,7 @@ public class MainActivity extends AppCompatActivity {
         Log.d("MainActivity", message);
         runOnUiThread(() -> debugLog.append(message + "\n"));
         if(receivedDataValue == null) return;
-        runOnUiThread(() -> {
-            receivedDataValue.setText(""); // Clear the text in receivedDataValue
-        });
-        runOnUiThread(() -> receivedDataValue.append(message + "\n"));
+        runOnUiThread(() -> receivedDataValue.setText(message));
     }
 
     public void updateReceivedData(String data) {

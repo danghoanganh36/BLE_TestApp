@@ -11,45 +11,31 @@ import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
 import android.net.Uri;
-import android.nfc.Tag;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Log;
-import android.widget.TextView;
-import android.widget.Toast;
-
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 import okhttp3.WebSocket;
-import okhttp3.WebSocketListener;
 
 
 public class BleManager {
 
     private static final String TAG = "BleManager";
-    private static final String CSV_HEADER = "Signal Integer , Voltage Value ,Raw Signal(Hex), Header 24 Data, Header 25 Data";
+    private static final String CSV_HEADER = "Signal Integer , Voltage Value, Raw Signal(Hex), Header 24 Data, Header 25 Data, Header 26 Data, Header 27 Data, Header 28 Data";
     public static final UUID SERVICE_UUID = UUID.fromString("a6ed0201-d344-460a-8075-b9e8ec90d71b");
     public static final UUID READ_CHARACTERISTIC_UUID = UUID.fromString("a6ed0202-d344-460a-8075-b9e8ec90d71b");
     public static final UUID WRITE_CHARACTERISTIC_UUID = UUID.fromString("a6ed0203-d344-460a-8075-b9e8ec90d71b");
@@ -70,18 +56,14 @@ public class BleManager {
     private String services;
     private String characteristics;
     private File csvFile;
-    public static List<Byte> dataBuffer = new ArrayList<>();
-    public static List<Byte> leftoverData = new ArrayList<>();
     public SignalProcessor signalProcessor;
 
     public boolean Marked = false;
-    //short MarkedAsNumber = Marked ? 1 : 0;
-    // Executor service to handle logging in parallel
     private final ExecutorService logExecutor = Executors.newSingleThreadExecutor();
 
     public BleManager(Context context) {
         this.context = context;
-        signalProcessor = new SignalProcessor();
+        signalProcessor = new SignalProcessor(context);
         saveCSVFileInPublicDirectory();
     }
 
@@ -223,99 +205,28 @@ public class BleManager {
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
             byte[] receivedData = characteristic.getValue();
             signalProcessor.addData(receivedData);
-            Log.i("Received Data", Arrays.toString(receivedData));
             signalProcessor.processStack();
         }
 
     };
 
-    Uri csvUri;
-    int signalInteger;
-    String numberString;
-    // Format the result
-    int MAX_ROWS = 10000;
-    long milliseconds;
-    boolean isStopped = false;
+//    Uri csvUri;
+//    int signalInteger;
+//    String numberString;
+//    // Format the result
+//    int MAX_ROWS = 10000;
+//    long milliseconds;
+//    boolean isStopped = false;
     List<Integer> signalIntegers = new ArrayList<>();
     List<Double> calculatedValues = new ArrayList<>();
     List<String> rawSignals = new ArrayList<>();
     List<String> header24Data = new ArrayList<>();
     List<String> header25Data = new ArrayList<>();
-
-//    private void logReceivedSignal(final String signalData, final long signalTimestamp) {
-//        Log.i("Received hex data", signalData);
-//        String cleanSignalData = signalData.replace("0x", "").replace(" ", "");
-//
-//        int packetIndex = cleanSignalData.indexOf("0B");
-//        int packetCount = 0;
-//        int signalInteger = 0;
-//        String header = (cleanSignalData.length() >= 2) ? cleanSignalData.substring(0, 2) : "";
-//        double calculatedValue = 0;
-//
-//        rawSignals.add(cleanSignalData);
-//
-//        Log.i("HEADER", header);
-//
-//        switch (header) {
-//            case "01":
-//            case "39":
-//                signalIntegers.add(signalInteger);
-//                calculatedValues.add(calculatedValue);
-//                return;
-//            case "24":
-//            case "25":
-//                int startIndex = cleanSignalData.indexOf(header);
-//                int endIndex = cleanSignalData.indexOf("0A", startIndex);
-//                if (startIndex == -1 && endIndex == -1) {
-//                    signalIntegers.add(signalInteger);
-//                    calculatedValues.add(calculatedValue);
-//                    return;
-//                }
-//                ;
-//
-//                String signalHex = cleanSignalData.substring(startIndex + 2, endIndex);
-//                String asciiSignal = hexToAscii(signalHex);
-//
-//                if (packetIndex != -1 && packetIndex + 4 <= cleanSignalData.length()) {
-//                    String packetHex = cleanSignalData.substring(packetIndex + 2, packetIndex + 6);
-//                    packetCount = Integer.parseInt(packetHex, 16);
-//                }
-//
-//                try {
-//                    String numberString = asciiSignal.replaceAll("[^0-9]", "");
-//                    signalInteger = (!numberString.isEmpty()) ? Integer.parseInt(numberString) : 0;
-//                } catch (NumberFormatException e) {
-//                    Log.e(TAG, "Error converting ASCII signal to integer: " + e.getMessage());
-//                }
-//
-//                calculatedValue = (signalInteger - 8388608) * 3.3 / 8388608;
-//
-//                if (header.equals("24")) {
-//                    header24Data.add(asciiSignal);
-//                } else {
-//                    header25Data.add(asciiSignal);
-//                }
-//                break;
-//
-//            default:
-//                signalIntegers.add(signalInteger);
-//                calculatedValues.add(calculatedValue);
-//                return;
-//        }
-//
-//        Log.i("Signal Integer", String.valueOf(signalInteger));
-//        Log.i("Calculated Value", String.valueOf(calculatedValue));
-//        signalIntegers.add(signalInteger);
-//        calculatedValues.add(calculatedValue);
-//
-//        // Save to CSV if limit is reached
-//        if (signalIntegers.size() >= MAX_ROWS) {
-//            saveCsvRowsToCurrentFile();
-//        }
-//    }
+    List<String> header26Data = new ArrayList<>();
+    List<String> header27Data = new ArrayList<>();
+    List<String> header28Data = new ArrayList<>();
 
     public void StopDataEvent() {
-        //isStopped = false;
         saveCsvRowsToCurrentFile();
     }
 
@@ -324,8 +235,11 @@ public class BleManager {
         signalIntegers = signalProcessor.signalIntegers;
         calculatedValues = signalProcessor.calculatedValues;
         rawSignals = signalProcessor.rawSignals;
-        header25Data= signalProcessor.header25Values;
         header24Data = signalProcessor.header24Values;
+        header25Data = signalProcessor.header25Values;
+        header26Data = signalProcessor.header26Values;
+        header27Data = signalProcessor.header27Values;
+        header28Data = signalProcessor.header28Values;
 
         Log.i("Saving CSV", "Saving CSV rows to file");
         logExecutor.execute(() -> {
@@ -341,18 +255,46 @@ public class BleManager {
                                 StringBuilder csvContent = new StringBuilder();
                                 for (int i = 0; i < calculatedValues.size(); i++) {
                                     csvContent.
+                                            // Export SIGNAL INTEGER
                                             append(signalIntegers.get(i)).append(",")
+
+                                            // Export VOLTAGE VALUE
                                             .append(calculatedValues.get(i)).append(",")
+
+                                            // Export RAW SIGNAL
                                             .append(rawSignals.get(i));
 
+                                    // Export Header 24 Data
                                     if (i < header24Data.size()) {
                                         csvContent.append(",").append(header24Data.get(i));
                                     } else {
                                         csvContent.append(","); // Placeholder if no value
                                     }
 
+                                    // Export Header 25 Data
                                     if (i < header25Data.size()) {
                                         csvContent.append(",").append(header25Data.get(i));
+                                    } else {
+                                        csvContent.append(","); // Placeholder if no value
+                                    }
+
+                                    // Export Header 26 Data
+                                    if (i < header26Data.size()) {
+                                        csvContent.append(",").append(header26Data.get(i));
+                                    } else {
+                                        csvContent.append(",");
+                                    }
+
+                                    // Export Header 27 Data
+                                    if (i < header27Data.size()) {
+                                        csvContent.append(",").append(header27Data.get(i));
+                                    } else {
+                                        csvContent.append(",");
+                                    }
+
+                                    // Export Header 28 Data
+                                    if (i < header28Data.size()) {
+                                        csvContent.append(",").append(header28Data.get(i));
                                     } else {
                                         csvContent.append(",");
                                     }
@@ -377,7 +319,7 @@ public class BleManager {
             calculatedValues.clear();
             rawSignals.clear();
             header24Data.clear();
-            header25Data.clear();
+            header26Data.clear();
         });
     }
 

@@ -67,6 +67,10 @@ public class BleManager {
         saveCSVFileInPublicDirectory();
     }
 
+    public String getLastReceivedValue() {
+        return signalProcessor.getLastReceivedValue();
+    }
+
     Uri uri;
 
     private void saveCSVFileInPublicDirectory() {
@@ -210,13 +214,6 @@ public class BleManager {
 
     };
 
-//    Uri csvUri;
-//    int signalInteger;
-//    String numberString;
-//    // Format the result
-//    int MAX_ROWS = 10000;
-//    long milliseconds;
-//    boolean isStopped = false;
     List<Integer> signalIntegers = new ArrayList<>();
     List<Double> calculatedValues = new ArrayList<>();
     List<String> rawSignals = new ArrayList<>();
@@ -305,6 +302,7 @@ public class BleManager {
                                 outputStream.flush();
                             }
                             Log.i("SAVING CSV", "CSV file saved successfully");
+
                         } catch (IOException e) {
                             Log.e("SAVING CSV ERROR", "Error writing to CSV file", e);
                         }

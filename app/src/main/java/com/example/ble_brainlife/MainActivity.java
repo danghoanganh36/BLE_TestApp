@@ -84,7 +84,6 @@ public class MainActivity extends AppCompatActivity {
         disconnectButton.setOnClickListener(v -> disconnectDevice());
         SwitchToLayout = (Button)findViewById(R.id.SwitchToControlLayout);
         SwitchToLayout.setEnabled(false);
-        //SwitchToLayout.setOnClickListener(v-> );
 
         debugLog = findViewById(R.id.debugLog);
 
@@ -211,14 +210,10 @@ public class MainActivity extends AppCompatActivity {
     public void logDebug(String message) {
         Log.d("MainActivity", message);
         runOnUiThread(() -> debugLog.append(message + "\n"));
-        if(receivedDataValue == null) return;
-        runOnUiThread(() -> receivedDataValue.setText(message));
     }
 
-    public void updateReceivedData(String data) {
-        // Update the TextView with the received data
-        receivedDataValue.setText(data);
+    public void logReceiveSignal() {
+        bleManager.getLastReceivedValue();
+        runOnUiThread(() -> receivedDataValue.setText(bleManager.getLastReceivedValue()));
     }
-
-
 }

@@ -25,8 +25,18 @@ public class SignalProcessor {
     public List<Double> calculatedValues = new ArrayList<>(); // Corrected reference
     public List<String> rawSignals = new ArrayList<>();
 
+    public String lastReceivedValue = "";
+
     public SignalProcessor(Context context) {
         this.context = context;
+    }
+
+    public void setLastReceivedValue(String lastReceivedValue) {
+        this.lastReceivedValue = lastReceivedValue;
+    }
+
+    public String getLastReceivedValue() {
+        return lastReceivedValue;
     }
 
     void addData(byte[] data) {
@@ -87,8 +97,7 @@ public class SignalProcessor {
     }
 
     private void header24Process(final String signalData) {
-        MainActivity mainActivity = (MainActivity) context;
-        mainActivity.logDebug(signalData);
+        setLastReceivedValue(signalData);
         String asciiSignal = hexToAscii(signalData);
         String rawSignal = String.format("%s%s%s", "24", signalData, "0A");
         rawSignals.add(rawSignal);

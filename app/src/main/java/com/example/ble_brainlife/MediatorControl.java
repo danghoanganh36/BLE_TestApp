@@ -1,5 +1,6 @@
 package com.example.ble_brainlife;
 
+import android.os.Handler;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.EditText;
@@ -15,6 +16,18 @@ public class MediatorControl implements Mediator {
         main.mediator = this;
         ble.mediator = this;
     }
+
+    private final Handler signalHandler = new Handler();
+
+    private final Runnable signalRunnable = new Runnable() {
+        @Override
+        public void run() {
+            main.logReceiveSignal();
+            // milliseconds
+            long SIGNAL_INTERVAL = 20;
+            signalHandler.postDelayed(this, SIGNAL_INTERVAL);
+        }
+    };
 
     @Override
     public void notify(Object sender, String event) {
@@ -43,6 +56,7 @@ public class MediatorControl implements Mediator {
         TextView deviceName = main.findViewById(R.id.deviceNameValue);
         TextView deviceAddress = main.findViewById(R.id.deviceAddressValue);
         TextView deviceServices = main.findViewById(R.id.deviceServicesValue);
+        main.receivedDataValue = main.findViewById(R.id.receivedDataValue);
         EditText sessionTimeValue = main.findViewById(R.id.inputSessionTime);
         // Gán receivedDataValue cho biến thành viên
         Button disconnectButton = main.findViewById(R.id.disconnectButton);
@@ -70,12 +84,14 @@ public class MediatorControl implements Mediator {
                 int sessionTime = Integer.parseInt(sessionTimeValue.getText().toString());
                 handleReceiveSignalDataWithinSessionTime(sessionTime);
             }
+            signalHandler.post(signalRunnable);
         });
         stopSignalButton.setOnClickListener(v -> {
             String hexSignal = "2200220D";
             byte[] signal = hexStringToByteArray(hexSignal);
             ble.writeToCharacteristic(signal);
             ble.StopDataEvent();
+            signalHandler.removeCallbacks(signalRunnable);
         });
     }
 

@@ -11,48 +11,39 @@ import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
 import android.net.Uri;
-import android.nfc.Tag;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Log;
-import android.widget.TextView;
-import android.widget.Toast;
-
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 import okhttp3.WebSocket;
-import okhttp3.WebSocketListener;
 
 
 public class BleManager {
 
     private static final String TAG = "BleManager";
-    private static final String CSV_HEADER = "Signal Integer , Voltage Value ,Raw Signal(Hex), Header 24 Data, Header 25 Data";
+    private static final String CSV_HEADER = "Signal Integer , Voltage Value, Raw Signal(Hex), Header 24 Data, Header 25 Data, Header 26 Data, Header 27 Data, Header 28 Data";
     public static final UUID SERVICE_UUID = UUID.fromString("a6ed0201-d344-460a-8075-b9e8ec90d71b");
     public static final UUID READ_CHARACTERISTIC_UUID = UUID.fromString("a6ed0202-d344-460a-8075-b9e8ec90d71b");
     public static final UUID WRITE_CHARACTERISTIC_UUID = UUID.fromString("a6ed0203-d344-460a-8075-b9e8ec90d71b");
+
+    public static final UUID NORDIC_SERVICE_UUID = UUID.fromString("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
+    public static final UUID NORDIC_READ_CHARACTERISTIC_UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
+    public static final UUID NORDIC_WRITE_CHARACTERISTIC_UUID = UUID.fromString("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
+
     private static final UUID CLIENT_CHARACTERISTIC_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     private static final UUID LED_CHARACTERISTIC_UUID = UUID.fromString("a6ed0205-d344-460a-8075-b9e8ec90d71b");
 
@@ -65,21 +56,23 @@ public class BleManager {
     private String services;
     private String characteristics;
     private File csvFile;
-    public static List<Byte> dataBuffer = new ArrayList<>();
-    public static List<Byte> leftoverData = new ArrayList<>();
-
+    public SignalProcessor signalProcessor;
 
     public boolean Marked = false;
-    //short MarkedAsNumber = Marked ? 1 : 0;
-    // Executor service to handle logging in parallel
     private final ExecutorService logExecutor = Executors.newSingleThreadExecutor();
 
     public BleManager(Context context) {
         this.context = context;
+        signalProcessor = new SignalProcessor(context);
         saveCSVFileInPublicDirectory();
     }
 
+    public String getLastReceivedValue() {
+        return signalProcessor.getLastReceivedValue();
+    }
+
     Uri uri;
+
     private void saveCSVFileInPublicDirectory() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ContentValues contentValues = new ContentValues();
@@ -110,7 +103,7 @@ public class BleManager {
             }
             csvFile = new File(storageDir, "ble_signals_log.csv");
             try (FileWriter writer = new FileWriter(csvFile, true)) {
-                writer.append(CSV_HEADER+",DaHell").append("\n");
+                writer.append(CSV_HEADER + ",DaHell").append("\n");
             } catch (IOException e) {
                 Log.e(TAG, "Error creating CSV file in public Documents directory", e);
             }
@@ -153,7 +146,7 @@ public class BleManager {
             services = "";
             characteristics = "";
 
-            BluetoothGattService service = gatt.getService(SERVICE_UUID);
+            BluetoothGattService service = gatt.getService(NORDIC_SERVICE_UUID);
             if (service != null) {
                 for (BluetoothGattCharacteristic characteristic : service.getCharacteristics()) {
                     characteristics += characteristic.getUuid().toString() + "\n";
@@ -163,8 +156,8 @@ public class BleManager {
                     services += discoveredService.getUuid().toString() + "\n";
                 }
 
-                BluetoothGattCharacteristic readCharacteristic = service.getCharacteristic(READ_CHARACTERISTIC_UUID);
-                BluetoothGattCharacteristic writeCharacteristic = service.getCharacteristic(WRITE_CHARACTERISTIC_UUID);
+                BluetoothGattCharacteristic readCharacteristic = service.getCharacteristic(NORDIC_READ_CHARACTERISTIC_UUID);
+                BluetoothGattCharacteristic writeCharacteristic = service.getCharacteristic(NORDIC_WRITE_CHARACTERISTIC_UUID);
                 if (readCharacteristic != null) {
                     gatt.setCharacteristicNotification(readCharacteristic, true);
                     BluetoothGattDescriptor descriptor = readCharacteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIG_UUID);
@@ -215,155 +208,36 @@ public class BleManager {
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
             byte[] receivedData = characteristic.getValue();
-            Log.i("Received data", Arrays.toString(receivedData));
-            long receivedTimestamp = System.currentTimeMillis();
-            // If there's leftover data from the previous signal, append it
-            if (!leftoverData.isEmpty()) {
-                dataBuffer.addAll(leftoverData);
-                leftoverData.clear(); // Clear leftover data
-            }
-
-            // Add the new received data to the buffer
-            for (byte b : receivedData) {
-                dataBuffer.add(b);
-            }
-
-            // Process data to detect complete signals
-            logReceivedSignal(processBuffer(), receivedTimestamp);
+            signalProcessor.addData(receivedData);
+            signalProcessor.processStack();
         }
+
     };
 
-    private String processBuffer() {
-        int startIdx = -1;
-        int endIdx = -1;
-
-        // Look for start (0x24) and end (0x0A) markers
-        for (int i = 0; i < dataBuffer.size(); i++) {
-            Log.i("Data Buffer", String.valueOf(dataBuffer.get(i)));
-            if ((dataBuffer.get(i) == 0x24 || dataBuffer.get(i) == 0x25) && startIdx == -1) { // Start byte found
-                startIdx = i;
-            } else if (dataBuffer.get(i) == 0x0A && startIdx != -1) { // End byte found after start byte
-                endIdx = i;
-                break;
-            }
-        }
-
-        // If we have found a complete signal
-        if (startIdx != -1 && endIdx != -1) {
-            List<Byte> completeSignalList = dataBuffer.subList(startIdx, endIdx + 1);
-            byte[] completeSignal = new byte[completeSignalList.size()];
-            for (int i = 0; i < completeSignalList.size(); i++) {
-                completeSignal[i] = completeSignalList.get(i);
-            }
-
-            dataBuffer.subList(0, endIdx + 1).clear();
-            return ByteArrayUtils.toHexString(completeSignal);
-            // Remove the processed data from the buffer
-        } else {
-            // If no complete signal, save the leftover data
-            leftoverData = new ArrayList<>(dataBuffer);
-            dataBuffer.clear();
-        }
-        return "";
-    }
-
-    private String hexToAscii(String hexStr) {
-        StringBuilder output = new StringBuilder("");
-        for (int i = 0; i < hexStr.length(); i += 2) {
-            String str = hexStr.substring(i, i + 2);
-            output.append((char) Integer.parseInt(str, 16));
-        }
-        return output.toString();
-    }
-
-
-    Uri csvUri; int signalInteger;String numberString;
-    // Format the result
-    int MAX_ROWS = 10000;
-    long milliseconds ;
-    boolean isStopped = false;
     List<Integer> signalIntegers = new ArrayList<>();
     List<Double> calculatedValues = new ArrayList<>();
     List<String> rawSignals = new ArrayList<>();
     List<String> header24Data = new ArrayList<>();
     List<String> header25Data = new ArrayList<>();
+    List<String> header26Data = new ArrayList<>();
+    List<String> header27Data = new ArrayList<>();
+    List<String> header28Data = new ArrayList<>();
 
-    private void logReceivedSignal(final String signalData, final long signalTimestamp) {
-        String cleanSignalData = signalData.replace("0x", "").replace(" ", "");
-
-        int packetIndex = cleanSignalData.indexOf("0B");
-        int packetCount = 0;
-        int signalInteger = 0;
-        String header = (cleanSignalData.length() >= 2) ? cleanSignalData.substring(0, 2) : "";
-        double calculatedValue = 0;
-
-        rawSignals.add(cleanSignalData);
-
-        Log.i("HEADER", header);
-
-        switch (header) {
-            case "01":
-            case "39":
-                signalIntegers.add(signalInteger);
-                calculatedValues.add(calculatedValue);
-                return;
-            case "24":
-            case "25":
-                int startIndex = cleanSignalData.indexOf(header);
-                int endIndex = cleanSignalData.indexOf("0A", startIndex);
-                if (startIndex == -1 && endIndex == -1) {
-                    signalIntegers.add(signalInteger);
-                    calculatedValues.add(calculatedValue);
-                    return;
-                };
-
-                String signalHex = cleanSignalData.substring(startIndex + 2, endIndex);
-                String asciiSignal = hexToAscii(signalHex);
-
-                if (packetIndex != -1 && packetIndex + 4 <= cleanSignalData.length()) {
-                    String packetHex = cleanSignalData.substring(packetIndex + 2, packetIndex + 6);
-                    packetCount = Integer.parseInt(packetHex, 16);
-                }
-
-                try {
-                    String numberString = asciiSignal.replaceAll("[^0-9]", "");
-                    signalInteger = (!numberString.isEmpty()) ? Integer.parseInt(numberString) : 0;
-                } catch (NumberFormatException e) {
-                    Log.e(TAG, "Error converting ASCII signal to integer: " + e.getMessage());
-                }
-
-                calculatedValue = (signalInteger - 8388608) * 3.3/8388608;
-
-                if (header.equals("24")) {
-                    header24Data.add(asciiSignal);
-                } else {
-                    header25Data.add(asciiSignal);
-                }
-                break;
-
-            default:
-                signalIntegers.add(signalInteger);
-                calculatedValues.add(calculatedValue);
-                return;
-        }
-
-        Log.i("Signal Integer", String.valueOf(signalInteger));
-        Log.i("Calculated Value", String.valueOf(calculatedValue));
-        signalIntegers.add(signalInteger);
-        calculatedValues.add(calculatedValue);
-
-        // Save to CSV if limit is reached
-        if (signalIntegers.size() >= MAX_ROWS) {
-            saveCsvRowsToCurrentFile();
-        }
-    }
-
-    public void StopDataEvent(){
-        isStopped = false;
+    public void StopDataEvent() {
         saveCsvRowsToCurrentFile();
     }
 
     private void saveCsvRowsToCurrentFile() {
+
+        signalIntegers = signalProcessor.signalIntegers;
+        calculatedValues = signalProcessor.calculatedValues;
+        rawSignals = signalProcessor.rawSignals;
+        header24Data = signalProcessor.header24Values;
+        header25Data = signalProcessor.header25Values;
+        header26Data = signalProcessor.header26Values;
+        header27Data = signalProcessor.header27Values;
+        header28Data = signalProcessor.header28Values;
+
         Log.i("Saving CSV", "Saving CSV rows to file");
         logExecutor.execute(() -> {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -378,18 +252,46 @@ public class BleManager {
                                 StringBuilder csvContent = new StringBuilder();
                                 for (int i = 0; i < calculatedValues.size(); i++) {
                                     csvContent.
+                                            // Export SIGNAL INTEGER
                                             append(signalIntegers.get(i)).append(",")
+
+                                            // Export VOLTAGE VALUE
                                             .append(calculatedValues.get(i)).append(",")
+
+                                            // Export RAW SIGNAL
                                             .append(rawSignals.get(i));
 
+                                    // Export Header 24 Data
                                     if (i < header24Data.size()) {
                                         csvContent.append(",").append(header24Data.get(i));
                                     } else {
                                         csvContent.append(","); // Placeholder if no value
                                     }
 
+                                    // Export Header 25 Data
                                     if (i < header25Data.size()) {
                                         csvContent.append(",").append(header25Data.get(i));
+                                    } else {
+                                        csvContent.append(","); // Placeholder if no value
+                                    }
+
+                                    // Export Header 26 Data
+                                    if (i < header26Data.size()) {
+                                        csvContent.append(",").append(header26Data.get(i));
+                                    } else {
+                                        csvContent.append(",");
+                                    }
+
+                                    // Export Header 27 Data
+                                    if (i < header27Data.size()) {
+                                        csvContent.append(",").append(header27Data.get(i));
+                                    } else {
+                                        csvContent.append(",");
+                                    }
+
+                                    // Export Header 28 Data
+                                    if (i < header28Data.size()) {
+                                        csvContent.append(",").append(header28Data.get(i));
                                     } else {
                                         csvContent.append(",");
                                     }
@@ -400,6 +302,7 @@ public class BleManager {
                                 outputStream.flush();
                             }
                             Log.i("SAVING CSV", "CSV file saved successfully");
+
                         } catch (IOException e) {
                             Log.e("SAVING CSV ERROR", "Error writing to CSV file", e);
                         }
@@ -414,7 +317,7 @@ public class BleManager {
             calculatedValues.clear();
             rawSignals.clear();
             header24Data.clear();
-            header25Data.clear();
+            header26Data.clear();
         });
     }
 
@@ -449,9 +352,9 @@ public class BleManager {
     @SuppressLint("MissingPermission")
     public void writeToCharacteristic(byte[] data) {
         if (bluetoothGatt != null) {
-            BluetoothGattService service = bluetoothGatt.getService(SERVICE_UUID);
+            BluetoothGattService service = bluetoothGatt.getService(NORDIC_SERVICE_UUID);
             if (service != null) {
-                BluetoothGattCharacteristic writeCharacteristic = service.getCharacteristic(WRITE_CHARACTERISTIC_UUID);
+                BluetoothGattCharacteristic writeCharacteristic = service.getCharacteristic(NORDIC_WRITE_CHARACTERISTIC_UUID);
                 if (writeCharacteristic != null) {
                     writeCharacteristic.setValue(data);
                     bluetoothGatt.writeCharacteristic(writeCharacteristic);
@@ -463,7 +366,7 @@ public class BleManager {
     @SuppressLint("MissingPermission")
     public void writeToLED(byte[] data) {
         if (bluetoothGatt != null) {
-            BluetoothGattService service = bluetoothGatt.getService(SERVICE_UUID);
+            BluetoothGattService service = bluetoothGatt.getService(NORDIC_SERVICE_UUID);
             if (service != null) {
                 BluetoothGattCharacteristic writeCharacteristic = service.getCharacteristic(LED_CHARACTERISTIC_UUID);
                 if (writeCharacteristic != null) {
@@ -477,9 +380,9 @@ public class BleManager {
     @SuppressLint("MissingPermission")
     public void readFromCharacteristic() {
         if (bluetoothGatt != null) {
-            BluetoothGattService service = bluetoothGatt.getService(SERVICE_UUID);
+            BluetoothGattService service = bluetoothGatt.getService(NORDIC_SERVICE_UUID);
             if (service != null) {
-                BluetoothGattCharacteristic readCharacteristic = service.getCharacteristic(READ_CHARACTERISTIC_UUID);
+                BluetoothGattCharacteristic readCharacteristic = service.getCharacteristic(NORDIC_READ_CHARACTERISTIC_UUID);
                 if (readCharacteristic != null) {
                     bluetoothGatt.readCharacteristic(readCharacteristic);
                 }

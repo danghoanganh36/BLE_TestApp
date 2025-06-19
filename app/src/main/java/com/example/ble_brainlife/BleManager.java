@@ -35,7 +35,7 @@ import okhttp3.WebSocket;
 public class BleManager {
 
     private static final String TAG = "BleManager";
-    private static final String CSV_HEADER = "Signal Integer , Voltage Value, Raw Signal(Hex), Header 24 Data, Header 25 Data, Header 26 Data, Header 27 Data, Header 28 Data";
+    private static final String CSV_HEADER = "Signal Integer , Voltage Value, Raw Signal(Hex), Header 24 Data, Header 25 Data, Header 26 Data, Header 27 Data, Header 28 Data, Header 24 Filtered Values, Header 26 Filtered Values";
     public static final UUID SERVICE_UUID = UUID.fromString("a6ed0201-d344-460a-8075-b9e8ec90d71b");
     public static final UUID READ_CHARACTERISTIC_UUID = UUID.fromString("a6ed0202-d344-460a-8075-b9e8ec90d71b");
     public static final UUID WRITE_CHARACTERISTIC_UUID = UUID.fromString("a6ed0203-d344-460a-8075-b9e8ec90d71b");
@@ -132,6 +132,7 @@ public class BleManager {
             }
 
             if (newState == BluetoothGatt.STATE_DISCONNECTING) {
+                signalProcessor.shutdownExecutor();
                 if (webSocket != null) {
                     webSocket.close(1000, "Stopping posting to cloud.");
                     webSocket = null;
@@ -222,13 +223,14 @@ public class BleManager {
     List<String> header26Data = new ArrayList<>();
     List<String> header27Data = new ArrayList<>();
     List<String> header28Data = new ArrayList<>();
+    List<Double> header24FilteredValues = new ArrayList<>();
+    List<Double> header26FilteredValues = new ArrayList<>();
 
     public void StopDataEvent() {
         saveCsvRowsToCurrentFile();
     }
 
     private void saveCsvRowsToCurrentFile() {
-
         signalIntegers = signalProcessor.signalIntegers;
         calculatedValues = signalProcessor.calculatedValues;
         rawSignals = signalProcessor.rawSignals;
@@ -245,9 +247,6 @@ public class BleManager {
                     try {
                         ContentResolver contentResolver = context.getContentResolver();
                         try (OutputStream outputStream = contentResolver.openOutputStream(uri, "wa")) {
-                            Log.d("SIGNAL LIST SIZE", "rawSignals: " + rawSignals.size()
-                                    + ", signalIntegers: " + signalIntegers.size()
-                                    + ", calculatedValues: " + calculatedValues.size());
                             if (outputStream != null) {
                                 StringBuilder csvContent = new StringBuilder();
                                 for (int i = 0; i < calculatedValues.size(); i++) {
@@ -292,6 +291,20 @@ public class BleManager {
                                     // Export Header 28 Data
                                     if (i < header28Data.size()) {
                                         csvContent.append(",").append(header28Data.get(i));
+                                    } else {
+                                        csvContent.append(",");
+                                    }
+
+                                    // Export Header 24 Filtered Values
+                                    if (i < header24FilteredValues.size()) {
+                                        csvContent.append(",").append(header24FilteredValues.get(i));
+                                    } else {
+                                        csvContent.append(",");
+                                    }
+
+                                    // Export Header 26 Filtered Values
+                                    if (i < header26FilteredValues.size()) {
+                                        csvContent.append(",").append(header26FilteredValues.get(i));
                                     } else {
                                         csvContent.append(",");
                                     }

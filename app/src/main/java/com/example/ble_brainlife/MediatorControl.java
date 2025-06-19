@@ -8,7 +8,7 @@ import android.widget.TextView;
 
 public class MediatorControl implements Mediator {
     public MainActivity main;
-    private BleManager ble;
+    private final BleManager ble;
 
     public MediatorControl(MainActivity main, BleManager ble) {
         this.main = main;
@@ -34,7 +34,16 @@ public class MediatorControl implements Mediator {
         if (event.startsWith("UpdateReceivedData:")) {
             String newData = event.substring("UpdateReceivedData:".length());
             return;
+        } else if (event.startsWith("UpdateAF4SignalQuality:")) {
+            String quality = event.substring("UpdateAF4SignalQuality:".length());
+            updateAF4SignalQuality(quality);
+            return;
+        } else if (event.startsWith("UpdateAF3SignalQuality:")) {
+            String quality = event.substring("UpdateAF3SignalQuality:".length());
+            updateAF3SignalQuality(quality);
+            return;
         }
+
         switch (event) {
             case "Switch To Layout":
                 SwitchToLayout();
@@ -47,6 +56,28 @@ public class MediatorControl implements Mediator {
         }
     }
 
+    private void updateAF4SignalQuality(String quality) {
+
+        if (main != null) {
+            TextView signalQualityText = main.findViewById(R.id.signalQualityAF4Text);
+            if (signalQualityText != null) {
+                main.runOnUiThread(() -> {
+                    signalQualityText.setText(quality);
+                });
+            }
+        }
+    }
+
+    private void updateAF3SignalQuality(String quality) {
+        if (main != null) {
+            TextView signalQualityText = main.findViewById(R.id.signalQualityAF3Text);
+            if (signalQualityText != null) {
+                main.runOnUiThread(() -> {
+                    signalQualityText.setText(quality);
+                });
+            }
+        }
+    }
 
     private void SwitchToLayout() {
         // Switch to the BLE info layout
@@ -56,12 +87,15 @@ public class MediatorControl implements Mediator {
         TextView deviceName = main.findViewById(R.id.deviceNameValue);
         TextView deviceAddress = main.findViewById(R.id.deviceAddressValue);
         TextView deviceServices = main.findViewById(R.id.deviceServicesValue);
+        TextView AF4signalQualityText = main.findViewById(R.id.signalQualityAF4Text);
+        TextView AF3signalQualityText = main.findViewById(R.id.signalQualityAF3Text);
         main.receivedDataValue = main.findViewById(R.id.receivedDataValue);
         EditText sessionTimeValue = main.findViewById(R.id.inputSessionTime);
         // Gán receivedDataValue cho biến thành viên
-        Button disconnectButton = main.findViewById(R.id.disconnectButton);
         Button sendSignalButton = main.findViewById(R.id.sendSignalButton);
         Button stopSignalButton = main.findViewById(R.id.StopSignalButton);
+        Button startTestingSignalButton = main.findViewById(R.id.startTestingSignalButton);
+        Button stopTestingSignalButton = main.findViewById(R.id.stopTestingSignalButton);
 
         // Populate BLE information
         deviceName.setText(ble.getDeviceName());
@@ -69,12 +103,10 @@ public class MediatorControl implements Mediator {
         String services = ble.getServices();
         String characteristics = ble.getCharacteristics();
         deviceServices.setText(services != null ? services : "None");
+        AF3signalQualityText.setText(ble.signalProcessor.getCurrentAF3SignalQuality());
+        AF4signalQualityText.setText(ble.signalProcessor.getCurrentAF4SignalQuality());
 
-        // Xử lý sự kiện nút bấm
-        disconnectButton.setOnClickListener(v -> {
-            ble.disconnect();
-            main.setContentView(R.layout.activity_main);
-        });
+        // Actually Start session
         sendSignalButton.setOnClickListener(v -> {
             String hexSignal = "2201230D";
             byte[] signal = hexStringToByteArray(hexSignal);
@@ -93,11 +125,29 @@ public class MediatorControl implements Mediator {
             ble.StopDataEvent();
             signalHandler.removeCallbacks(signalRunnable);
         });
+
+        // Testing Start session
+        startTestingSignalButton.setOnClickListener(v -> {
+            String hexSignal = "2201230D";
+            byte[] signal = hexStringToByteArray(hexSignal);
+            ble.writeToCharacteristic(signal);
+            Log.d("SEND DATA", "START SEND");
+            handleReceiveSignalDataWithinSessionTime(20);
+            signalHandler.post(signalRunnable);
+            Log.d("SEND DATA", "STOP SEND");
+        });
+        stopTestingSignalButton.setOnClickListener(v -> {
+            String hexSignal = "2200220D";
+            byte[] signal = hexStringToByteArray(hexSignal);
+            ble.writeToCharacteristic(signal);
+            ble.StopDataEvent();
+            signalHandler.removeCallbacks(signalRunnable);
+        });
     }
 
     private void handleReceiveSignalDataWithinSessionTime(int sessionTime) {
         if (sessionTime > 0) {
-            long delayMillis = (long) sessionTime * 60 * 1000;
+            long delayMillis = (long) sessionTime * 1000;
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                 String hexSignal = "2200220D";
                 byte[] signal = hexStringToByteArray(hexSignal);

@@ -29,6 +29,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
+    packaging {
+        resources {
+            excludes += setOf("META-INF/*")
+        }
+    }
 }
 
 dependencies {
@@ -41,4 +46,10 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
+
+    implementation(libs.jdsp) {
+        exclude(group = "org.apache.maven.surefire", module = "common-java5")
+        exclude(group = "org.apache.maven.surefire", module = "surefire-api")
+    }
+
 }

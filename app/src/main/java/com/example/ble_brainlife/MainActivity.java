@@ -60,10 +60,12 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
                 if (device != null && device.getName() != null) {
-                    String deviceInfo = "Device found: " + device.getName() + " (" + device.getAddress() + ")";
-                    logDebug(deviceInfo); // Add log to debugLog and logcat
-                    deviceList.add(deviceInfo);
-                    deviceListAdapter.notifyDataSetChanged();
+                    if (device.getName().contains("BrainLife")) {
+                        String deviceInfo = "Device found: " + device.getName() + " (" + device.getAddress() + ")";
+                        logDebug(deviceInfo); // Add log to debugLog and logcat
+                        deviceList.add(deviceInfo);
+                        deviceListAdapter.notifyDataSetChanged();
+                    }
                 }
             }
         }
@@ -82,7 +84,7 @@ public class MainActivity extends AppCompatActivity {
 
         Button disconnectButton = findViewById(R.id.Disconnect);
         disconnectButton.setOnClickListener(v -> disconnectDevice());
-        SwitchToLayout = (Button)findViewById(R.id.SwitchToControlLayout);
+        SwitchToLayout = (Button) findViewById(R.id.SwitchToControlLayout);
         SwitchToLayout.setEnabled(false);
 
         debugLog = findViewById(R.id.debugLog);
@@ -111,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
         // Request permissions if not granted
         checkPermissions();
 
-        mediator = new MediatorControl(this,bleManager);
+        mediator = new MediatorControl(this, bleManager);
     }
 
     private void checkPermissions() {
